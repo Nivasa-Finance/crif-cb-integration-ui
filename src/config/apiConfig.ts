@@ -1,11 +1,10 @@
 // API Configuration
 const isLocalHost = typeof window !== 'undefined' ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') : false;
 const DEV_LOCAL_BASE = 'http://127.0.0.1:8000';
-const AUTH_REMOTE_BASE = import.meta.env.VITE_AUTH_BASE_URL || 'https://9hxc3kom41.execute-api.ap-south-1.amazonaws.com/prod';
 
 export const API_CONFIG = {
   BASE_URL: isLocalHost ? DEV_LOCAL_BASE : (import.meta.env.VITE_API_BASE_URL || 'https://api.example.com'),
-  AUTH_BASE_URL: AUTH_REMOTE_BASE,
+  AUTH_BASE_URL: isLocalHost ? DEV_LOCAL_BASE : (import.meta.env.VITE_API_BASE_URL || 'https://api.example.com'),
   ENDPOINTS: {
     AUTH: '/api/v1/login',
     CREDIT_REPORT: '/credit-report',
@@ -36,7 +35,11 @@ export const buildHeaders = (method?: string, hasBody?: boolean, token?: string,
   return headers;
 };
 
-export const buildApiUrl = (endpoint: string): string => `${API_CONFIG.BASE_URL}${endpoint}`;
+export const buildApiUrl = (endpoint: string): string => {
+  const base = API_CONFIG.BASE_URL.replace(/\/$/, ''); // Remove trailing slash if present
+  const cleanEndpoint = endpoint.replace(/^\//, ''); // Remove leading slash if present
+  return `${base}/${cleanEndpoint}`;
+};
 export const getAuthUrl = (): string => `${API_CONFIG.AUTH_BASE_URL}${API_CONFIG.ENDPOINTS.AUTH}`;
 export const getCreditReportUrl = (): string => buildApiUrl(API_CONFIG.ENDPOINTS.CREDIT_REPORT);
 export const getCreditReportByIdUrl = (id: string): string => buildApiUrl(API_CONFIG.ENDPOINTS.CREDIT_REPORT_BY_ID(id)); 

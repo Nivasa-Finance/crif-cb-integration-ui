@@ -27,13 +27,13 @@
 - **API Name**: `nivasa-crif-api`
 - **Stage**: `prod`
 - **Domain**: `api.nivasa.io`
-- **API Path**: `/crif`
-- **Base Path**: `/crif/api/v1`
+- **API Path**: ``
+- **Base Path**: ``
 
 ### Environment Variables
 ```
-VITE_API_BASE_URL=https://api.nivasa.io/crif/api/v1
-VITE_APP_TITLE=CRIF Credit Bureau Integration
+VITE_API_BASE_URL=https://api.nivasa.io
+VITE_APP_TITLE=Nivasa Navigator
 VITE_APP_ENV=production
 ```
 
@@ -49,7 +49,7 @@ VITE_APP_ENV=production
 ### Phase 2: API Gateway Setup
 1. **API Gateway Console** → Create API → REST API → Build
 2. **API Name**: `nivasa-crif-api`
-3. **Resources**: Create `/crif` → `/api` → `/v1`
+3. **Resources**: Create `/consent`, `/persons`, `/credit-bureau` directly under root
 4. **Methods**: Add GET/POST/PUT/DELETE for each endpoint
 5. **Deploy**: Create stage `prod`
 
@@ -80,8 +80,8 @@ VITE_APP_ENV=production
 - **Expected**: React app loads without errors
 
 ### API Test
-- **Base URL**: `https://api.nivasa.io/crif/api/v1`
-- **Test Endpoint**: `https://api.nivasa.io/crif/api/v1/consent/status/test-uuid`
+- **Base URL**: `https://api.nivasa.io`
+- **Test Endpoint**: `https://api.nivasa.io/consent/status/test-uuid`
 - **Expected**: API response (or 404 if endpoint not configured)
 
 ## 📞 AWS Support Resources
