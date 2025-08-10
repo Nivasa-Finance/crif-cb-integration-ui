@@ -12,7 +12,7 @@ Before starting, ensure you have:
 
 ## 🎯 URL Structure
 - **Frontend**: `https://nivasa.io`
-- **APIs**: `https://nivasa.io/crif/api/v1/...`
+- **APIs**: `https://api.nivasa.io/crif/api/v1/...`
 
 ## 🏗️ Phase 1: AWS Amplify Frontend Deployment
 
@@ -65,7 +65,7 @@ frontend:
 
 4. **Environment Variables**
    Add these environment variables in Amplify:
-   - `VITE_API_BASE_URL`: `https://nivasa.io/crif/api/v1`
+   - `VITE_API_BASE_URL`: `https://api.nivasa.io/crif/api/v1`
    - `VITE_APP_TITLE`: `CRIF Credit Bureau Integration`
    - `VITE_APP_ENV`: `production`
 
@@ -78,7 +78,7 @@ frontend:
 1. **Add Custom Domain**
    - In your Amplify app, go to "Domain management"
    - Click "Add domain"
-   - Enter: `nivasa.io` (not a subdomain)
+   - Enter: `nivasa.io` (main domain, not subdomain)
 
 2. **Verify Domain Ownership**
    - AWS will provide CNAME records
@@ -171,7 +171,7 @@ For each endpoint, configure the appropriate HTTP methods:
 1. **Go to Custom Domain Names**
    - In API Gateway, click "Custom Domain Names"
    - Click "Create"
-   - **Domain name**: `nivasa.io`
+   - **Domain name**: `api.nivasa.io`
    - **Regional endpoint**: Select your region
    - Click "Create"
 
@@ -181,7 +181,7 @@ For each endpoint, configure the appropriate HTTP methods:
    - Click "Configure API mappings"
    - **API**: Select your API
    - **Stage**: `prod`
-   - **Path**: `/crif` (this is crucial!)
+   - **Path**: Leave empty (for root)
    - Click "Save"
 
 ### Step 2: Update DNS Records
@@ -190,13 +190,11 @@ Add these records to your DNS provider:
 
 ```
 # Frontend (Amplify)
-nivasa.io    CNAME    d1234abcd.cloudfront.net
+nivasa.io         CNAME    d1234abcd.cloudfront.net
 
-# Backend (API Gateway) - Same domain, different path
-nivasa.io    CNAME    abc123.execute-api.ap-south-1.amazonaws.com
+# Backend (API Gateway)
+api.nivasa.io     CNAME    abc123.execute-api.ap-south-1.amazonaws.com
 ```
-
-**Important**: Since both frontend and backend use the same domain, you'll need to use path-based routing in API Gateway.
 
 ## 🔧 Phase 4: Update Application Configuration
 
@@ -205,7 +203,7 @@ nivasa.io    CNAME    abc123.execute-api.ap-south-1.amazonaws.com
 In AWS Amplify Console, update your environment variables:
 
 ```
-VITE_API_BASE_URL=https://nivasa.io/crif/api/v1
+VITE_API_BASE_URL=https://api.nivasa.io/crif/api/v1
 VITE_APP_TITLE=CRIF Credit Bureau Integration
 VITE_APP_ENV=production
 ```
@@ -218,7 +216,7 @@ VITE_APP_ENV=production
 
 2. **Verify Deployment**
    - Check that your app loads at `https://nivasa.io`
-   - Verify API calls go to `https://nivasa.io/crif/api/v1`
+   - Verify API calls go to `https://api.nivasa.io/crif/api/v1`
 
 ## 🧪 Phase 5: Testing and Validation
 
@@ -229,7 +227,7 @@ VITE_APP_ENV=production
 
 ### Step 2: Test API Endpoints
 1. Test each API endpoint using Postman or curl
-2. Example: `https://nivasa.io/crif/api/v1/consent/status/test-uuid`
+2. Example: `https://api.nivasa.io/crif/api/v1/consent/status/test-uuid`
 3. Verify responses are correct
 4. Check API Gateway CloudWatch logs for any issues
 
@@ -249,13 +247,11 @@ VITE_APP_ENV=production
 - Verify API Gateway endpoints are correct
 - Check CORS configuration
 - Verify domain mapping in API Gateway
-- Ensure path mapping is set to `/crif`
 
 ### Issue: Domain Not Working
 - Verify DNS records are correct
 - Check SSL certificate status
 - Ensure domain validation is complete
-- Verify API Gateway path mapping
 
 ## 📚 Additional Resources
 
@@ -273,4 +269,4 @@ If you encounter issues:
 
 ---
 
-**Next Steps**: After completing this guide, your application will be accessible at `https://nivasa.io` with APIs at `https://nivasa.io/crif/api/v1/...`. 
+**Next Steps**: After completing this guide, your application will be accessible at `https://nivasa.io` with APIs at `https://api.nivasa.io/crif/api/v1/...`. 

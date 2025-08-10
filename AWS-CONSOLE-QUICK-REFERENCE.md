@@ -26,13 +26,13 @@
 ### Backend Configuration
 - **API Name**: `nivasa-crif-api`
 - **Stage**: `prod`
-- **Domain**: `nivasa.io`
+- **Domain**: `api.nivasa.io`
 - **API Path**: `/crif`
 - **Base Path**: `/crif/api/v1`
 
 ### Environment Variables
 ```
-VITE_API_BASE_URL=https://nivasa.io/crif/api/v1
+VITE_API_BASE_URL=https://api.nivasa.io/crif/api/v1
 VITE_APP_TITLE=CRIF Credit Bureau Integration
 VITE_APP_ENV=production
 ```
@@ -55,23 +55,23 @@ VITE_APP_ENV=production
 
 ### Phase 3: Domain Configuration
 1. **API Gateway** → Custom Domain Names → Create
-2. **Domain**: `nivasa.io`
-3. **API Mappings**: Map API to path `/crif`
+2. **Domain**: `api.nivasa.io`
+3. **API Mappings**: Map API to root path (leave empty)
 4. **DNS**: Add CNAME records from AWS
 
 ## ⚠️ Important Notes
 
 ### Critical Configuration Points
-- **API Path Mapping**: Must be set to `/crif` in API Gateway
-- **DNS Records**: Both frontend and backend use same domain
+- **Frontend Domain**: `nivasa.io` (main domain)
+- **Backend Domain**: `api.nivasa.io` (separate subdomain)
 - **SSL Certificates**: AWS will provision automatically
-- **CORS**: Configure if needed for cross-origin requests
+- **CORS**: No issues since different domains
 
 ### Common Pitfalls
-- Forgetting to set API path mapping to `/crif`
 - Using wrong build command or output directory
 - Not setting environment variables in Amplify
 - DNS propagation can take up to 48 hours
+- Mixing up frontend and backend domains
 
 ## 🧪 Testing URLs
 
@@ -80,8 +80,8 @@ VITE_APP_ENV=production
 - **Expected**: React app loads without errors
 
 ### API Test
-- **Base URL**: `https://nivasa.io/crif/api/v1`
-- **Test Endpoint**: `https://nivasa.io/crif/api/v1/consent/status/test-uuid`
+- **Base URL**: `https://api.nivasa.io/crif/api/v1`
+- **Test Endpoint**: `https://api.nivasa.io/crif/api/v1/consent/status/test-uuid`
 - **Expected**: API response (or 404 if endpoint not configured)
 
 ## 📞 AWS Support Resources
