@@ -1,0 +1,36 @@
+{
+  "frontend": {
+    "domain": "nivasa.io",
+    "subdomain": "",
+    "fullUrl": "https://nivasa.io",
+    "region": "ap-south-1",
+    "buildSettings": {
+      "buildCommand": "npm run build",
+      "outputDirectory": "dist",
+      "nodeVersion": "18"
+    }
+  },
+  "backend": {
+    "domain": "nivasa.io",
+    "apiPath": "/crif/api/v1",
+    "fullApiUrl": "https://nivasa.io/crif/api/v1",
+    "region": "ap-south-1",
+    "apiGateway": {
+      "restApiName": "nivasa-crif-api",
+      "stageName": "prod",
+      "endpointType": "REGIONAL"
+    }
+  },
+  "environmentVariables": {
+    "production": {
+      "VITE_API_BASE_URL": "https://nivasa.io/crif/api/v1",
+      "VITE_APP_TITLE": "CRIF Credit Bureau Integration",
+      "VITE_APP_ENV": "production"
+    },
+    "staging": {
+      "VITE_API_BASE_URL": "https://staging.nivasa.io/crif/api/v1",
+      "VITE_APP_TITLE": "CRIF Credit Bureau Integration (Staging)",
+      "VITE_APP_ENV": "staging"
+    }
+  }
+} 
