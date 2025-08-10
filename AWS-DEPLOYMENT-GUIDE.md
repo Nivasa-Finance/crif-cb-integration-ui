@@ -12,7 +12,7 @@ Before starting, ensure you have:
 
 ## 🎯 URL Structure
 - **Frontend**: `https://nivasa.io`
-- **APIs**: `https://api.nivasa.io/crif/api/v1/...`
+- **APIs**: `https://api.nivasa.io/...`
 
 ## 🏗️ Phase 1: AWS Amplify Frontend Deployment
 
@@ -65,8 +65,8 @@ frontend:
 
 4. **Environment Variables**
    Add these environment variables in Amplify:
-   - `VITE_API_BASE_URL`: `https://api.nivasa.io/crif/api/v1`
-   - `VITE_APP_TITLE`: `CRIF Credit Bureau Integration`
+   - `VITE_API_BASE_URL`: `https://api.nivasa.io`
+   - `VITE_APP_TITLE`: `Nivasa Navigator`
    - `VITE_APP_ENV`: `production`
 
 5. **Review and Deploy**
@@ -107,40 +107,26 @@ frontend:
 
 1. **Create Base Resource Structure**
    - Click "Actions" → "Create Resource"
-   - **Resource Name**: `crif`
-   - **Resource Path**: `/crif`
+   - **Resource Name**: `consent`
+   - **Resource Path**: `/consent`
    - Click "Create Resource"
 
-2. **Create API Resource**
-   - Select `/crif` resource
-   - Click "Actions" → "Create Resource"
-   - **Resource Name**: `api`
-   - **Resource Path**: `/api`
-   - Click "Create Resource"
-
-3. **Create Version Resource**
-   - Select `/crif/api` resource
-   - Click "Actions" → "Create Resource"
-   - **Resource Name**: `v1`
-   - **Resource Path**: `/v1`
-   - Click "Create Resource"
-
-4. **Create API Endpoints**
-   For each of your API endpoints, create resources under `/crif/api/v1`:
+2. **Create API Endpoints**
+   For each of your API endpoints, create resources under the root:
 
    **Consent Management:**
-   - `/crif/api/v1/consent/status/{uuid}`
-   - `/crif/api/v1/consent/generate-link/{uuid}`
-   - `/crif/api/v1/consent/submit/{uuid}`
-   - `/crif/api/v1/consent/withdraw/{uuid}`
+   - `/consent/status/{uuid}`
+   - `/consent/generate-link/{uuid}`
+   - `/consent/submit/{uuid}`
+   - `/consent/withdraw/{uuid}`
 
    **Person Management:**
-   - `/crif/api/v1/persons/{uuid}`
-   - `/crif/api/v1/persons/{uuid}/update`
+   - `/persons/{uuid}`
+   - `/persons/{uuid}/update`
 
    **Credit Bureau:**
-   - `/crif/api/v1/credit-bureau/pull-report`
-   - `/crif/api/v1/credit-bureau/enquiry/{uuid}/complete-report`
+   - `/credit-bureau/pull-report`
+   - `/credit-bureau/enquiry/{uuid}/complete-report`
 
 ### Step 3: Configure Methods
 
@@ -203,8 +189,8 @@ api.nivasa.io     CNAME    abc123.execute-api.ap-south-1.amazonaws.com
 In AWS Amplify Console, update your environment variables:
 
 ```
-VITE_API_BASE_URL=https://api.nivasa.io/crif/api/v1
-VITE_APP_TITLE=CRIF Credit Bureau Integration
+VITE_API_BASE_URL=https://api.nivasa.io
+VITE_APP_TITLE=Nivasa Navigator
 VITE_APP_ENV=production
 ```
 
@@ -216,7 +202,7 @@ VITE_APP_ENV=production
 
 2. **Verify Deployment**
    - Check that your app loads at `https://nivasa.io`
-   - Verify API calls go to `https://api.nivasa.io/crif/api/v1`
+   - Verify API calls go to `https://api.nivasa.io`
 
 ## 🧪 Phase 5: Testing and Validation
 
@@ -227,7 +213,7 @@ VITE_APP_ENV=production
 
 ### Step 2: Test API Endpoints
 1. Test each API endpoint using Postman or curl
-2. Example: `https://api.nivasa.io/crif/api/v1/consent/status/test-uuid`
+2. Example: `https://api.nivasa.io/consent/status/test-uuid`
 3. Verify responses are correct
 4. Check API Gateway CloudWatch logs for any issues
 
@@ -269,4 +255,4 @@ If you encounter issues:
 
 ---
 
-**Next Steps**: After completing this guide, your application will be accessible at `https://nivasa.io` with APIs at `https://api.nivasa.io/crif/api/v1/...`. 
+**Next Steps**: After completing this guide, your application will be accessible at `https://nivasa.io` with APIs at `https://api.nivasa.io/...`. 

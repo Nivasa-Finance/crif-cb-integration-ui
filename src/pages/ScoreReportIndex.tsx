@@ -10,6 +10,7 @@ import { InquirySection } from "@/components/InquirySection";
 import { SummarySection } from "@/components/SummarySection";
 import { NavigationSidebar } from "@/components/NavigationSidebar";
 import { API_CONFIG, buildHeaders } from "@/config/apiConfig";
+import { apiFetch } from '@/services/httpClient';
 
 const Index = () => {
   const rememberPersonManagement = () => {
@@ -64,7 +65,7 @@ const Index = () => {
         let parsed: any | null = null;
         if (enquiryUuid) {
           const url = `${API_CONFIG.BASE_URL}/api/v1/credit-bureau/enquiry/${encodeURIComponent(enquiryUuid)}/complete-report?_=${Date.now()}`;
-          const res = await fetch(url, { headers: buildHeaders('GET', false) });
+          const res = await apiFetch(url, { headers: buildHeaders('GET', false) });
           if (!res.ok) {
             let msg = '';
             try { const j = await res.json(); msg = j?.message || j?.error || ''; } catch {}

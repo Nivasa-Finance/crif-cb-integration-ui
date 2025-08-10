@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { API_CONFIG, buildHeaders } from '@/config/apiConfig';
+import { apiFetch } from '@/services/httpClient';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -78,9 +79,9 @@ const LeadDashboard: React.FC<LeadDashboardProps> = ({ onViewLead, onNewInquiry,
         loan_amount: Number(loanAmount),
         product_type: productType,
       };
-      const res = await fetch(`${API_CONFIG.BASE_URL}/api/v1/leads`, {
+      const res = await apiFetch(`${API_CONFIG.BASE_URL}/api/v1/leads`, {
         method: 'POST',
-        headers: buildHeaders('POST', true),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error('Failed to create lead');
@@ -102,7 +103,7 @@ const LeadDashboard: React.FC<LeadDashboardProps> = ({ onViewLead, onNewInquiry,
     setError(null);
     try {
       const url = `${API_CONFIG.BASE_URL}/api/v1/leads?limit=${lmt}&offset=${off}`;
-      const res = await fetch(url, { headers: buildHeaders('GET', false) });
+      const res = await apiFetch(url, { headers: { 'Content-Type': 'application/json' } });
       if (!res.ok) throw new Error('Failed to fetch leads');
 
       const data = await res.json();

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useParams } from 'react-router-dom';
 import { API_CONFIG, buildHeaders } from '@/config/apiConfig';
+import { apiFetch } from '@/services/httpClient';
 import { CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 
 const WithdrawalForm = () => {
@@ -18,10 +19,10 @@ const WithdrawalForm = () => {
     if (!personId) return;
     try {
       setIsSubmitting(true);
-      const res = await fetch(`${API_CONFIG.BASE_URL}/api/v1/consent/withdraw/${encodeURIComponent(personId)}`, {
+      const res = await apiFetch(`${API_CONFIG.BASE_URL}/api/v1/consent/withdraw/${encodeURIComponent(personId)}`, {
         method: 'DELETE',
         headers: buildHeaders('DELETE', true, undefined, true),
-      });
+      }, { skipAuth: true });
       const data = await res.json().catch(() => ({}));
       const msg = data?.message || '';
       if (res.ok) {

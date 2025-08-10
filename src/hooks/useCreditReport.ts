@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { apiFetch } from '@/services/httpClient';
 
 interface CreditReportData {
   "B2C-REPORT": {
@@ -69,7 +70,7 @@ export const useCreditReport = (options: UseCreditReportOptions = {}) => {
     setError(null);
     try {
       const endpoint = id ? `${url}/${id}` : url;
-      const response = await fetch(endpoint, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+      const response = await apiFetch(endpoint, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const result: CreditReportData = await response.json();
       setData(result);

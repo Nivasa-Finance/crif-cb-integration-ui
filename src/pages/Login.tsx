@@ -47,7 +47,13 @@ const Login = () => {
       }
       const data: AuthResponse = await response.json();
 
-      // Store tokens in localStorage
+      // Store tokens via token manager
+      try {
+        const { saveLoginTokensFromResponse } = await import('../services/httpClient');
+        saveLoginTokensFromResponse(data);
+      } catch {}
+
+      // Maintain legacy localStorage for compatibility (optional)
       localStorage.setItem('accessToken', data.AuthenticationResult.AccessToken);
       localStorage.setItem('refreshToken', data.AuthenticationResult.RefreshToken);
       localStorage.setItem('idToken', data.AuthenticationResult.IdToken);

@@ -11,6 +11,7 @@ import { ArrowLeft, User, Phone, MapPin, CreditCard, MessageCircle, FileText, Ey
 import { Link, useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { API_CONFIG, buildHeaders } from '@/config/apiConfig';
+import { apiFetch } from '@/services/httpClient';
 
 // Map API consent_status to UI enum
 const mapConsentStatus = (raw: any): Person['consentStatus'] => {
@@ -285,7 +286,7 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
     try {
       // Fetch latest person details from backend and fill the form
       const url = `${API_CONFIG.BASE_URL}/api/v1/persons/${encodeURIComponent(person.id)}?decrypt_pii=false`;
-      const res = await fetch(url, { headers: buildHeaders('GET', false) });
+      const res = await apiFetch(url, { headers: buildHeaders('GET', false) });
       if (!res.ok) throw new Error('Failed to fetch person details');
       const data = await res.json();
       const p = data.person || {};
@@ -389,9 +390,9 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
       state: formData.state,
       pincode: formData.pincode,
         };
-        const res = await fetch(`${API_CONFIG.BASE_URL}/api/v1/persons/${encodeURIComponent(editingPerson.id)}`, {
+        const res = await apiFetch(`${API_CONFIG.BASE_URL}/api/v1/persons/${encodeURIComponent(editingPerson.id)}`, {
           method: 'PUT',
-          headers: buildHeaders('PUT', true),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updatePayload),
         });
         if (!res.ok) {
@@ -417,9 +418,9 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
           state: formData.state || undefined,
           pincode: formData.pincode,
         };
-        const res = await fetch(`${API_CONFIG.BASE_URL}/api/v1/persons`, {
+        const res = await apiFetch(`${API_CONFIG.BASE_URL}/api/v1/persons`, {
           method: 'POST',
-          headers: buildHeaders('POST', true),
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
         if (!res.ok) {
@@ -445,9 +446,9 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
     try {
       setSendingConsentId(personId);
       const url = `${API_CONFIG.BASE_URL}/api/v1/consent/generate-link/${encodeURIComponent(personId)}`;
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: 'POST',
-        headers: buildHeaders('POST', true),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
       if (!res.ok) throw new Error('Failed to generate consent link');
@@ -466,7 +467,7 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
     try {
       setCheckingConsentId(personId);
       const url = `${API_CONFIG.BASE_URL}/api/v1/consent/status/${encodeURIComponent(personId)}`;
-      const res = await fetch(url, { headers: buildHeaders('GET', false) });
+      const res = await apiFetch(url, { headers: buildHeaders('GET', false) });
       if (!res.ok) throw new Error('Failed to fetch consent status');
       const data = await res.json();
       const apiStatus = String(data.consent_status || '').toUpperCase();
@@ -542,9 +543,9 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
         pincode: person.pincode,
       } as any;
 
-      const res = await fetch(`${API_CONFIG.BASE_URL}/api/v1/credit-bureau/pull-report`, {
+      const res = await apiFetch(`${API_CONFIG.BASE_URL}/api/v1/credit-bureau/pull-report`, {
         method: 'POST',
-        headers: buildHeaders('POST', true),
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
@@ -568,7 +569,7 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
     }
     try {
       const url = `${API_CONFIG.BASE_URL}/api/v1/credit-bureau/enquiry/${encodeURIComponent(person.enquiryUuid)}/complete-report`;
-      const res = await fetch(url, { headers: buildHeaders('GET', false) });
+      const res = await apiFetch(url, { headers: buildHeaders('GET', false) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message || 'Failed to fetch report');
 
@@ -637,7 +638,7 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
     setIsLoadingPersons(true);
     try {
       const url = `${API_CONFIG.BASE_URL}/api/v1/persons?lead_uuid=${encodeURIComponent(lead.id)}&limit=50&offset=0`;
-      const res = await fetch(url, { headers: buildHeaders('GET', false) });
+      const res = await apiFetch(url, { headers: buildHeaders('GET', false) });
       if (!res.ok) throw new Error('Failed to load persons');
       const data = await res.json();
       const items = data.persons || data.results || [];
@@ -691,7 +692,7 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
       try {
         await Promise.allSettled(mapped.map(async (p) => {
           const statusUrl = `${API_CONFIG.BASE_URL}/api/v1/consent/status/${encodeURIComponent(p.id)}`;
-          const statusRes = await fetch(statusUrl, { headers: buildHeaders('GET', false) });
+          const statusRes = await apiFetch(statusUrl, { headers: buildHeaders('GET', false) });
           if (!statusRes.ok) return;
           const statusData = await statusRes.json();
           const apiStatus = String(statusData.consent_status || '').toUpperCase();
@@ -1036,7 +1037,7 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
                           >
                             <BarChart3 className="h-4 w-4 mr-1" />
                             Credit Report
-                          </Button>
+                              </Button>
                         )}
                         {person.creditBureauStatus === 'Failed' && (
                           <Button

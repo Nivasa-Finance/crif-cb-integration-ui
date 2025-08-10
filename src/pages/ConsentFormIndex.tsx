@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import CreditCheckForm from '@/components/CreditCheckForm';
 import { API_CONFIG, buildHeaders } from '@/config/apiConfig';
+import { apiFetch } from '@/services/httpClient';
 import { CheckCircle, AlertTriangle, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -25,7 +26,7 @@ const ConsentFormIndex: React.FC = () => {
         setLoading(true);
         setError(null);
         const url = `${API_CONFIG.BASE_URL}/api/v1/persons/${encodeURIComponent(personId)}?decrypt_pii=false`;
-        const res = await fetch(url, { headers: buildHeaders('GET', false, undefined, true) });
+        const res = await apiFetch(url, { headers: buildHeaders('GET', false, undefined, true) }, { skipAuth: true });
         if (!res.ok) throw new Error('Failed to load person');
         const data = await res.json();
         setPerson(data.person || data);
@@ -50,11 +51,11 @@ const ConsentFormIndex: React.FC = () => {
     }
     try {
       setSubmitting(true);
-      const res = await fetch(`${API_CONFIG.BASE_URL}/api/v1/consent/submit/${encodeURIComponent(personId)}?consent_token=${encodeURIComponent(token)}`, {
+      const res = await apiFetch(`${API_CONFIG.BASE_URL}/api/v1/consent/submit/${encodeURIComponent(personId)}?consent_token=${encodeURIComponent(token)}`, {
         method: 'POST',
         headers: buildHeaders('POST', true, undefined, true),
         body: JSON.stringify({ consent_given: true }),
-      });
+      }, { skipAuth: true });
       const data = await res.json().catch(() => ({}));
       const msg = (data?.message || '').toString();
       if (res.ok) {
