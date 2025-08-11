@@ -371,9 +371,10 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
       });
       return;
     }
-    // Compose DD-MM-YYYY date (backend expects this format)
+    // Compose dates for different endpoints
     const pad2 = (s: string) => s.toString().padStart(2, '0');
-    const dob = `${pad2(formData.day)}-${pad2(formData.month)}-${formData.year}`;
+    const dobApi = `${formData.year}-${pad2(formData.month)}-${pad2(formData.day)}`; // persons create/update expects YYYY-MM-DD
+    const dobCrif = `${pad2(formData.day)}-${pad2(formData.month)}-${formData.year}`; // CRIF pull needs DD-MM-YYYY (used elsewhere)
 
     try {
       setIsSavingRemote(true);
@@ -383,7 +384,7 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
           first_name: formData.firstName,
           middle_name: formData.middleName || '',
           last_name: formData.lastName,
-          date_of_birth: dob,
+          date_of_birth: dobApi,
           whatsapp_number: formData.whatsappNumber || '',
           alternate_number: formData.alternateNumber || '',
           address_line1: formData.addressLine1,
@@ -409,7 +410,7 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
           first_name: formData.firstName,
           middle_name: formData.middleName || '',
           last_name: formData.lastName,
-          date_of_birth: dob,
+          date_of_birth: dobApi,
           primary_number: formData.primaryNumber,
           whatsapp_number: formData.whatsappNumber || undefined,
           alternate_number: formData.alternateNumber || undefined,
