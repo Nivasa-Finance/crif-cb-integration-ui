@@ -34,6 +34,16 @@ api.interceptors.request.use(async (config) => {
     if (!hdrs['Content-Type']) hdrs['Content-Type'] = 'application/json';
   }
 
+  // Normalize any accidental lowercase 'authorization' header to exact casing
+  if (config.headers) {
+    const hdrs = config.headers as Record<string, string>;
+    const lowerAuth = (hdrs as any)['authorization'];
+    if (lowerAuth && !hdrs['Authorization']) {
+      hdrs['Authorization'] = lowerAuth;
+      delete (hdrs as any)['authorization'];
+    }
+  }
+
   // Custom flag to skip auth
   const skipAuth = (config as any)._skipAuth === true;
 
