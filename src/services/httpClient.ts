@@ -42,6 +42,10 @@ api.interceptors.request.use(async (config) => {
       hdrs['Authorization'] = lowerAuth;
       delete (hdrs as any)['authorization'];
     }
+    // Ensure Accept header present
+    if (!hdrs['Accept']) hdrs['Accept'] = 'application/json, text/plain, */*';
+  } else {
+    config.headers = { Accept: 'application/json, text/plain, */*' } as any;
   }
 
   // Custom flag to skip auth
@@ -58,7 +62,33 @@ api.interceptors.request.use(async (config) => {
 
 // Response interceptor for reactive refresh + retry once
 api.interceptors.response.use(
-  (response: AxiosResponse) => response,
+  (response: AxiosResponse) => {
+    // Normalize payloads to safe JSON-like objects
+    const ctHeader = (response.headers?.['content-type'] || (response.headers as any)?.['Content-Type'] || '') as string;
+    const ct = String(ctHeader).toLowerCase();
+    if (response.status === 204) {
+      (response as any).data = { success: true };
+      return response;
+    }
+    const data = response.data;
+    if (ct.includes('application/json')) {
+      if (typeof data === 'string') {
+        const trimmed = data.trim();
+        (response as any).data = trimmed ? safeParseString(trimmed) : { success: true };
+      } else if (data == null || data === '') {
+        (response as any).data = { success: true };
+      }
+    } else {
+      // Non-JSON or empty payloads → safe default
+      if (typeof data === 'string') {
+        const parsed = safeParseString(data);
+        (response as any).data = parsed ?? { success: true };
+      } else if (data == null) {
+        (response as any).data = { success: true };
+      }
+    }
+    return response;
+  },
   async (error: AxiosError) => {
     const response = error.response;
     const config = error.config as (AxiosRequestConfig & { _retry?: boolean; _skipAuth?: boolean });
@@ -91,6 +121,15 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// Local helper for safe JSON parse
+function safeParseString(text: string): any | null {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
 
 // Helper for login token storage (kept for existing call sites)
 export function saveLoginTokensFromResponse(payload: any) {

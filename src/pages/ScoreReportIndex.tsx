@@ -68,7 +68,7 @@ const Index = () => {
           const res = await apiFetch(url, { headers: buildHeaders('GET', false) });
           if (!res.ok) {
             let msg = '';
-            try { const j = await res.json(); msg = j?.message || j?.error || ''; } catch {}
+            try { const j = await res.json(); msg = (j && (j.message || j.error)) ? (j.message || j.error) : ''; } catch {}
             const combined = `${res.status} ${msg}`.toLowerCase();
             if (res.status === 404 || res.status === 410 || combined.includes('withdraw') || combined.includes('deleted') || combined.includes('not found') || combined.includes('consent')) {
               setWithdrawn({ active: true, message: 'Consent is withdrawn and credit data has been deleted.' });
@@ -80,7 +80,7 @@ const Index = () => {
             }
             throw new Error(msg || 'Failed to load report');
           }
-          parsed = await res.json();
+          parsed = await res.json().catch(() => ({}));
 
           // Detect special statuses even if response_json is null
           const statusUpper = String(parsed?.status || '').toUpperCase();

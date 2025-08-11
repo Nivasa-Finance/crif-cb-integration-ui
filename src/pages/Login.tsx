@@ -34,18 +34,8 @@ const Login = () => {
     }
     setIsLoading(true);
     try {
-      const response = await fetch(getAuthUrl(), {
-        method: 'POST',
-        headers: buildHeaders('POST', true),
-        body: JSON.stringify({
-          username,
-          password
-        })
-      });
-      if (!response.ok) {
-        throw new Error('Invalid credentials');
-      }
-      const data: AuthResponse = await response.json();
+      const response = await (await import('../lib/api')).api.post(getAuthUrl(), { username, password });
+      const data: AuthResponse = response.data;
 
       // Store tokens via token manager
       try {

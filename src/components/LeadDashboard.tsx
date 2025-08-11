@@ -85,7 +85,7 @@ const LeadDashboard: React.FC<LeadDashboardProps> = ({ onViewLead, onNewInquiry,
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error('Failed to create lead');
-      await res.json();
+      try { await res.json(); } catch { /* ignore empty */ }
 
       // Success: close modal, reset form, and refresh list
       setCreateOpen(false);
@@ -106,7 +106,7 @@ const LeadDashboard: React.FC<LeadDashboardProps> = ({ onViewLead, onNewInquiry,
       const res = await apiFetch(url, { headers: { 'Content-Type': 'application/json' } });
       if (!res.ok) throw new Error('Failed to fetch leads');
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       const normalized = (data.leads || data.results || data.items || data.data || []).map((d: any) => ({
         id: d.uuid || d.id,
         customerName: d.lead_name || d.customerName || d.name,
