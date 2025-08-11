@@ -11,6 +11,7 @@ import { ArrowLeft, User, Phone, MapPin, CreditCard, MessageCircle, FileText, Ey
 import { Link, useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { API_CONFIG, buildHeaders } from '@/config/apiConfig';
+import { getPersons, createCancelableRequest, api } from '@/lib/api';
 import { apiFetch } from '@/services/httpClient';
 
 // Map API consent_status to UI enum
@@ -370,9 +371,9 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
       });
       return;
     }
-    // Compose YYYY-MM-DD date
+    // Compose DD-MM-YYYY date (backend expects this format)
     const pad2 = (s: string) => s.toString().padStart(2, '0');
-    const dob = `${formData.year}-${pad2(formData.month)}-${pad2(formData.day)}`;
+    const dob = `${pad2(formData.day)}-${pad2(formData.month)}-${formData.year}`;
 
     try {
       setIsSavingRemote(true);
@@ -637,11 +638,9 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
     setPersonsError(null);
     setIsLoadingPersons(true);
     try {
-      const url = `${API_CONFIG.BASE_URL}/api/v1/persons?lead_uuid=${encodeURIComponent(lead.id)}&limit=50&offset=0`;
-      const res = await apiFetch(url, { headers: buildHeaders('GET', false) });
-      if (!res.ok) throw new Error('Failed to load persons');
-      const data = await res.json();
-      const items = data.persons || data.results || [];
+      // Use hardened client with safe defaults
+      const data = await getPersons({ leadUuid: lead.id, limit: 50, offset: 0 });
+      const items = Array.isArray((data as any).persons) ? (data as any).persons : [];
       const mapped: Person[] = items.map((p: any) => {
         const dob = String(p.date_of_birth || '').split('-');
         const year = dob[0] || '';
@@ -691,10 +690,9 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
       // Background refresh of consent statuses to avoid stale list data
       try {
         await Promise.allSettled(mapped.map(async (p) => {
-          const statusUrl = `${API_CONFIG.BASE_URL}/api/v1/consent/status/${encodeURIComponent(p.id)}`;
-          const statusRes = await apiFetch(statusUrl, { headers: buildHeaders('GET', false) });
-          if (!statusRes.ok) return;
-          const statusData = await statusRes.json();
+          const statusUrl = `/api/v1/consent/status/${encodeURIComponent(p.id)}`;
+          const statusRes = await api.get(statusUrl);
+          const statusData = statusRes.data || {};
           const apiStatus = String(statusData.consent_status || '').toUpperCase();
           const hasValid = Boolean(statusData.has_valid_consent);
           let mappedStatus: Person['consentStatus'] = 'CONSENT_NOT_SENT';
@@ -708,14 +706,17 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
       } catch {}
 
     } catch (err: any) {
-      setPersonsError(err.message || 'Error loading persons');
+      setPersonsError(err?.message || 'Error loading persons');
     } finally {
       setIsLoadingPersons(false);
     }
   };
 
   useEffect(() => {
+    let cancelled = false;
+    // Also demonstrate cancellation via AbortController on a raw request if needed in future
     fetchPersonsForLead();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead.id]);
 
