@@ -27,16 +27,30 @@ const Index = () => {
   const [applicantData, setApplicantData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [withdrawn, setWithdrawn] = useState<{ active: boolean; message?: string }>({ active: false });
+  const [expired, setExpired] = useState<{ active: boolean; message?: string }>({ active: false });
   const [resultInfo, setResultInfo] = useState<{ type: 'NO_HIT' | 'DATA_MISMATCH' | null; message?: string }>({ type: null });
 
   useEffect(() => {
     const loadReport = async () => {
       setError(null);
       setWithdrawn({ active: false });
+      setExpired({ active: false });
       setResultInfo({ type: null });
       try {
         const params = new URLSearchParams(window.location.search);
+        const consentStatus = params.get('consent_status');
         const resultParam = (params.get('result') || '').toUpperCase();
+        
+        // Handle consent status first
+        if (consentStatus === 'EXPIRED') {
+          setExpired({ active: true, message: 'Your consent has expired. Please contact us to generate a new consent link to access your credit report.' });
+          return;
+        }
+        
+        if (consentStatus === 'WITHDRAWN') {
+          setWithdrawn({ active: true, message: 'Consent has been withdrawn and credit data has been deleted.' });
+          return;
+        }
         if (resultParam === 'NO_HIT' || resultParam === 'DATA_MISMATCH') {
           setResultInfo({
             type: resultParam as 'NO_HIT' | 'DATA_MISMATCH',
@@ -48,20 +62,6 @@ const Index = () => {
         }
         let enquiryUuid = params.get('enquiry_uuid');
 
-        // If URL lacks it, try reading from local persistence
-        if (!enquiryUuid) {
-          const selectedPerson = sessionStorage.getItem('selectedPersonId');
-          if (selectedPerson) {
-            try {
-              const persisted = localStorage.getItem(`creditBureau_${selectedPerson}`);
-              if (persisted) {
-                const saved = JSON.parse(persisted);
-                if (saved?.enquiryUuid) enquiryUuid = saved.enquiryUuid;
-              }
-            } catch {}
-          }
-        }
-
         let parsed: any | null = null;
         if (enquiryUuid) {
           const url = `${API_CONFIG.BASE_URL}/api/v1/credit-bureau/enquiry/${encodeURIComponent(enquiryUuid)}/complete-report?_=${Date.now()}`;
@@ -70,8 +70,12 @@ const Index = () => {
             let msg = '';
             try { const j = await res.json(); msg = (j && (j.message || j.error)) ? (j.message || j.error) : ''; } catch {}
             const combined = `${res.status} ${msg}`.toLowerCase();
-            if (res.status === 404 || res.status === 410 || combined.includes('withdraw') || combined.includes('deleted') || combined.includes('not found') || combined.includes('consent')) {
-              setWithdrawn({ active: true, message: 'Consent is withdrawn and credit data has been deleted.' });
+            if (res.status === 404 || res.status === 410 || combined.includes('deleted') || combined.includes('not found') || combined.includes('consent')) {
+              if (combined.includes('expire') || combined.includes('expired')) {
+                setExpired({ active: true, message: 'Your consent has expired. Please contact us to generate a new consent link to access your credit report.' });
+              } else {
+                setWithdrawn({ active: true, message: 'Consent is withdrawn and credit data has been deleted.' });
+              }
               const selectedPerson = sessionStorage.getItem('selectedPersonId');
               if (selectedPerson) {
                 try { localStorage.removeItem(`creditReport_${selectedPerson}`); } catch {}
@@ -93,30 +97,23 @@ const Index = () => {
             });
             return;
           }
-
-          // Save for future quick loads if we know the selected person
-          const selectedPerson = sessionStorage.getItem('selectedPersonId');
-          if (selectedPerson) {
-            try { localStorage.setItem(`creditReport_${selectedPerson}`, JSON.stringify(parsed)); } catch {}
-          }
         } else {
-          // Fallback to local saved full report
-          const selectedPerson = sessionStorage.getItem('selectedPersonId');
-          if (selectedPerson) {
-            const local = localStorage.getItem(`creditReport_${selectedPerson}`);
-            if (local) parsed = JSON.parse(local);
-          }
-          if (!parsed) {
-            setWithdrawn({ active: true, message: 'Consent is withdrawn and credit data has been deleted.' });
-            return;
-          }
+          setError("enquiry_uuid parameter not found in the URL.");
+          return;
         }
 
         const effective = parsed?.response_json || parsed;
         const b2c = effective?.["B2C-REPORT"];
         const reportData = b2c?.["REPORT-DATA"];
         if (!b2c || !reportData) {
-          setWithdrawn({ active: true, message: 'Consent is withdrawn and credit data has been deleted.' });
+          // Check if consent is expired vs withdrawn
+          const params = new URLSearchParams(window.location.search);
+          const consentStatus = params.get('consent_status');
+          if (consentStatus === 'EXPIRED') {
+            setExpired({ active: true, message: 'Your consent has expired. Please contact us to generate a new consent link to access your credit report.' });
+          } else {
+            setWithdrawn({ active: true, message: 'Consent is withdrawn and credit data has been deleted.' });
+          }
           const selectedPerson = sessionStorage.getItem('selectedPersonId');
           if (selectedPerson) {
             try { localStorage.removeItem(`creditReport_${selectedPerson}`); } catch {}
@@ -175,14 +172,50 @@ const Index = () => {
     );
   }
 
+  if (expired.active) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="max-w-md w-full text-center">
+          <div className="flex justify-center mb-4"><img src="/nivasa-logo.png" className="h-10" /></div>
+          <div className="bg-card border rounded-lg p-8 shadow">
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+            </div>
+            <h2 className="text-xl font-semibold mb-2 text-amber-800">Consent Expired</h2>
+            <p className="text-sm text-muted-foreground mb-6">{expired.message}</p>
+            <div className="space-y-3">
+              <Button variant="outline" onClick={() => window.history.back()} className="w-full">
+                Go Back
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Contact support to generate a new consent link
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (withdrawn.active) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="max-w-md w-full text-center">
           <div className="flex justify-center mb-4"><img src="/nivasa-logo.png" className="h-10" /></div>
           <div className="bg-card border rounded-lg p-8 shadow">
-            <h2 className="text-xl font-semibold mb-2">Consent Withdrawn</h2>
-            <p className="text-sm text-muted-foreground">{withdrawn.message || 'Consent is withdrawn and credit data has been deleted.'}</p>
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+            <h2 className="text-xl font-semibold mb-2 text-red-800">Consent Withdrawn</h2>
+            <p className="text-sm text-muted-foreground mb-6">{withdrawn.message || 'Consent is withdrawn and credit data has been deleted.'}</p>
             <div className="mt-6">
               <Button variant="outline" onClick={() => window.history.back()}>Go Back</Button>
             </div>
@@ -214,11 +247,11 @@ const Index = () => {
               <Link to="/dashboard" aria-label="Go to dashboard" onClick={rememberPersonManagement}>
                 <img src="/nivasa-logo.png" alt="Nivasa Finance" className="h-8 w-auto cursor-pointer" />
               </Link>
-              <div>
-                <h1 className="text-2xl font-bold text-foreground">Credit Report Dashboard</h1>
-                <p className="text-muted-foreground text-sm">
-                  {applicantData["FIRST-NAME"]} {applicantData["LAST-NAME"]} • {headerData["REPORT-ID"]}
-                </p>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Credit Report Dashboard</h1>
+              <p className="text-muted-foreground text-sm">
+                {applicantData["FIRST-NAME"]} {applicantData["LAST-NAME"]} • {headerData["REPORT-ID"]}
+              </p>
               </div>
             </div>
             <div className="text-right">

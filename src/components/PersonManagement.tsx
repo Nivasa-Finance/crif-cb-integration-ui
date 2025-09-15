@@ -523,11 +523,11 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
     try {
       setTriggeringBureauId(personId);
       // Compose payload from person and lead
-      // For CRIF, DOB must be dd-mm-yyyy
+      // For credit bureau API, DOB must be YYYY-MM-DD
       const dd = person.dateOfBirth.day.padStart(2,'0');
       const mm = person.dateOfBirth.month.padStart(2,'0');
       const yyyy = person.dateOfBirth.year;
-      const dobCrif = `${dd}-${mm}-${yyyy}`;
+      const dobApi = `${yyyy}-${mm}-${dd}`;
       const leadUuid = lead.id;
       const body = {
         person_uuid: person.id,
@@ -535,7 +535,7 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
         first_name: person.firstName,
         middle_name: person.middleName || '',
         last_name: person.lastName,
-        date_of_birth: dobCrif,
+        date_of_birth: dobApi,
         mobile_number: person.primaryNumber,
         pan: person.panNumber,
         address_line1: person.addressLine1,
@@ -569,6 +569,20 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
       toast({ title: 'No enquiry found', description: 'Please trigger credit bureau first.' });
       return;
     }
+    
+    // Check consent status first before fetching report
+    if (person.consentStatus === 'CONSENT_EXPIRED') {
+      try { sessionStorage.setItem('selectedPersonId', person.id); } catch {}
+      navigate(`/score-report?consent_status=EXPIRED`);
+      return;
+    }
+    
+    if (person.consentStatus === 'CONSENT_WITHDRAWN') {
+      try { sessionStorage.setItem('selectedPersonId', person.id); } catch {}
+      navigate(`/score-report?consent_status=WITHDRAWN`);
+      return;
+    }
+    
     try {
       const url = `${API_CONFIG.BASE_URL}/api/v1/credit-bureau/enquiry/${encodeURIComponent(person.enquiryUuid)}/complete-report`;
       const res = await apiFetch(url, { headers: buildHeaders('GET', false) });
@@ -594,7 +608,6 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
 
       // Persist report locally for score page to consume
       try {
-        localStorage.setItem(`creditReport_${person.id}`, JSON.stringify(data));
         localStorage.setItem(`creditBureau_${person.id}`, JSON.stringify({ status: 'Success', enquiryUuid: person.enquiryUuid }));
       } catch {}
       setPersons(prev => prev.map(p => p.id === person.id ? { ...p, creditBureauStatus: 'Success' } : p));
@@ -635,6 +648,25 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
   ];
   const years = Array.from({ length: 80 }, (_, i) => (new Date().getFullYear() - i).toString());
 
+  // Helper function to sync credit bureau status from localStorage
+  const syncCreditBureauStatus = (person: Person): Person => {
+    try {
+      const persisted = localStorage.getItem(`creditBureau_${person.id}`);
+      if (persisted) {
+        const saved = JSON.parse(persisted);
+        if (saved?.status) {
+          person.creditBureauStatus = saved.status;
+        }
+        if (saved?.enquiryUuid && !person.enquiryUuid) {
+          person.enquiryUuid = saved.enquiryUuid;
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to sync credit bureau status for person ${person.id}:`, error);
+    }
+    return person;
+  };
+
   const fetchPersonsForLead = async () => {
     setPersonsError(null);
     setIsLoadingPersons(true);
@@ -665,16 +697,12 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
           consentStatus: mapConsentStatus(p.consent_status ?? p.consentStatus),
           creditBureauStatus: undefined,
           leadId: lead.id,
+          enquiryUuid: p.latest_enquiry_id || undefined,
         };
-        // Merge any locally persisted credit bureau status
-        try {
-          const persisted = localStorage.getItem(`creditBureau_${personMapped.id}`);
-          if (persisted) {
-            const saved = JSON.parse(persisted);
-            if (saved?.status) personMapped.creditBureauStatus = saved.status;
-            if (saved?.enquiryUuid) personMapped.enquiryUuid = saved.enquiryUuid;
-          }
-        } catch {}
+        
+        // Sync credit bureau status from localStorage
+        syncCreditBureauStatus(personMapped);
+        
         // If consent is withdrawn, clear any persisted report/enquiry and reset status so UI allows re-trigger
         if (personMapped.consentStatus === 'CONSENT_WITHDRAWN') {
           personMapped.creditBureauStatus = undefined;
@@ -713,6 +741,11 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
     }
   };
 
+  // Force sync credit bureau status for all persons
+  const syncAllCreditBureauStatus = () => {
+    setPersons(prev => prev.map(person => ({ ...syncCreditBureauStatus({ ...person }) })));
+  };
+
   useEffect(() => {
     let cancelled = false;
     // Also demonstrate cancellation via AbortController on a raw request if needed in future
@@ -720,6 +753,15 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead.id]);
+
+  // Periodic sync to ensure desktop and mobile stay in sync
+  useEffect(() => {
+    const interval = setInterval(() => {
+      syncAllCreditBureauStatus();
+    }, 3000); // Sync every 3 seconds
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -965,115 +1007,268 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
         {persons.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle>Added Persons ({persons.length})</CardTitle>
+              <CardTitle className="flex justify-between items-center">
+                <span>Added Persons ({persons.length})</span>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={syncAllCreditBureauStatus}
+                  title="Refresh credit bureau status"
+                >
+                  🔄 Sync Status
+                </Button>
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Full Name</TableHead>
-                    <TableHead>Primary Number</TableHead>
-                    <TableHead>WhatsApp Number</TableHead>
-                    <TableHead>PAN Number</TableHead>
-                    <TableHead>Consent Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                    <TableHead>Credit Bureau Status</TableHead>
-                    <TableHead>Report</TableHead>
-                    <TableHead>Edit</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {persons.map((person) => (
-                    <TableRow key={person.id} className="cursor-pointer" onClick={() => loadPersonForEdit(person)}>
-                      <TableCell className="font-medium">
-                        {`${person.firstName} ${person.middleName ? person.middleName + ' ' : ''}${person.lastName}`}
-                      </TableCell>
-                      <TableCell>{person.primaryNumber}</TableCell>
-                      <TableCell>{person.whatsappNumber || '-'}</TableCell>
-                      <TableCell>{person.panNumber}</TableCell>
-                      <TableCell>{getConsentStatusBadge(person.consentStatus)}</TableCell>
-                       <TableCell>
-                         <div className="flex gap-2">
-                           {person.consentStatus !== 'CONSENT_RECEIVED' && (
-                             <Button
-                               size="sm"
-                               variant="outline"
-                                onClick={(e) => { e.stopPropagation(); handleSendConsent(person.id); }}
-                                disabled={sendingConsentId === person.id}
-                             >
-                               <MessageCircle className="h-4 w-4 mr-1" />
-                                {sendingConsentId === person.id ? 'Sending…' : (person.consentStatus === 'CONSENT_NOT_SENT' ? 'Send Consent' : 'Resend Consent')}
-                             </Button>
-                           )}
-                           <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); handleCheckConsent(person.id); }} disabled={checkingConsentId === person.id}>
-                             {checkingConsentId === person.id ? 'Checking…' : 'Check Status'}
-                           </Button>
-                           
-                           {person.consentStatus === 'CONSENT_RECEIVED' && (
-                             <Button
-                               size="sm"
-                            onClick={(e) => { e.stopPropagation(); handleTriggerCreditBureau(person.id); }}
-                            disabled={triggeringBureauId === person.id}
-                             >
-                               <FileText className="h-4 w-4 mr-1" />
-                            {triggeringBureauId === person.id ? 'Triggering…' : (person.creditBureauStatus ? 'Re-Trigger Credit Bureau' : 'Trigger Credit Bureau')}
-                             </Button>
-                           )}
-                         </div>
-                       </TableCell>
-                      <TableCell>{getCreditBureauStatusBadge(person.creditBureauStatus)}</TableCell>
-                      <TableCell>
-                        {person.creditBureauStatus === 'Processing' && (
-                          <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); fetchCompleteReport(person); }}>Get Report</Button>
-                        )}
-                        {person.creditBureauStatus === 'Success' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              try { sessionStorage.setItem('selectedPersonId', person.id); } catch {}
-                              const url = `/score-report?enquiry_uuid=${encodeURIComponent(person.enquiryUuid || '')}`;
-                              navigate(url);
-                            }}
-                          >
-                            <BarChart3 className="h-4 w-4 mr-1" />
-                            Credit Report
-                              </Button>
-                        )}
-                        {person.creditBureauStatus === 'Failed' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              try { sessionStorage.setItem('selectedPersonId', person.id); } catch {}
-                              let result = 'NO_HIT';
-                              try {
-                                const saved = localStorage.getItem(`creditReportResult_${person.id}`);
-                                if (saved) result = saved;
-                              } catch {}
-                              navigate(`/score-report?result=${encodeURIComponent(result)}`);
-                            }}
-                          >
-                            View Result
-                          </Button>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => { e.stopPropagation(); loadPersonForEdit(person); }}
-                        >
-                          <Edit className="h-4 w-4 mr-1" />
-                          Edit
-                        </Button>
-                      </TableCell>
+              {/* Desktop Table View */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Full Name</TableHead>
+                      <TableHead>Primary Number</TableHead>
+                      <TableHead>WhatsApp Number</TableHead>
+                      <TableHead>PAN Number</TableHead>
+                      <TableHead>Consent Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                      <TableHead>Credit Bureau Status</TableHead>
+                      <TableHead>Report</TableHead>
+                      <TableHead>Edit</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {persons.map((person) => (
+                      <TableRow key={person.id} className="cursor-pointer" onClick={() => loadPersonForEdit(person)}>
+                        <TableCell className="font-medium">
+                          {`${person.firstName} ${person.middleName ? person.middleName + ' ' : ''}${person.lastName}`}
+                        </TableCell>
+                        <TableCell>{person.primaryNumber}</TableCell>
+                        <TableCell>{person.whatsappNumber || '-'}</TableCell>
+                        <TableCell>{person.panNumber}</TableCell>
+                        <TableCell>{getConsentStatusBadge(person.consentStatus)}</TableCell>
+                         <TableCell>
+                           <div className="flex gap-2">
+                             {person.consentStatus !== 'CONSENT_RECEIVED' && (
+                               <Button
+                                 size="sm"
+                                 variant="outline"
+                                  onClick={(e) => { e.stopPropagation(); handleSendConsent(person.id); }}
+                                  disabled={sendingConsentId === person.id}
+                               >
+                                 <MessageCircle className="h-4 w-4 mr-1" />
+                                  {sendingConsentId === person.id ? 'Sending…' : (person.consentStatus === 'CONSENT_NOT_SENT' ? 'Send Consent' : 'Resend Consent')}
+                               </Button>
+                             )}
+                             <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); handleCheckConsent(person.id); }} disabled={checkingConsentId === person.id}>
+                               {checkingConsentId === person.id ? 'Checking…' : 'Check Status'}
+                             </Button>
+                             
+                             {person.consentStatus === 'CONSENT_RECEIVED' && (
+                               <Button
+                                 size="sm"
+                              onClick={(e) => { e.stopPropagation(); handleTriggerCreditBureau(person.id); }}
+                              disabled={triggeringBureauId === person.id}
+                               >
+                                 <FileText className="h-4 w-4 mr-1" />
+                              {triggeringBureauId === person.id ? 'Triggering…' : (person.creditBureauStatus ? 'Re-Trigger Credit Bureau' : 'Trigger Credit Bureau')}
+                               </Button>
+                             )}
+                           </div>
+                         </TableCell>
+                        <TableCell>{getCreditBureauStatusBadge(person.creditBureauStatus)}</TableCell>
+                        <TableCell>
+                          {person.creditBureauStatus === 'Processing' && (
+                            <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); fetchCompleteReport(person); }}>Get Report</Button>
+                          )}
+                          {person.creditBureauStatus === 'Success' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                
+                                // Check consent status before navigating to credit report
+                                if (person.consentStatus === 'CONSENT_EXPIRED') {
+                                  try { sessionStorage.setItem('selectedPersonId', person.id); } catch {}
+                                  navigate(`/score-report?consent_status=EXPIRED`);
+                                  return;
+                                }
+                                
+                                if (person.consentStatus === 'CONSENT_WITHDRAWN') {
+                                  try { sessionStorage.setItem('selectedPersonId', person.id); } catch {}
+                                  navigate(`/score-report?consent_status=WITHDRAWN`);
+                                  return;
+                                }
+                                
+                                try { sessionStorage.setItem('selectedPersonId', person.id); } catch {}
+                                const url = `/score-report?enquiry_uuid=${encodeURIComponent(person.enquiryUuid || '')}`;
+                                navigate(url);
+                              }}
+                            >
+                              <BarChart3 className="h-4 w-4 mr-1" />
+                              Credit Report
+                                </Button>
+                          )}
+                          {person.creditBureauStatus === 'Failed' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                try { sessionStorage.setItem('selectedPersonId', person.id); } catch {}
+                                let result = 'NO_HIT';
+                                try {
+                                  const saved = localStorage.getItem(`creditReportResult_${person.id}`);
+                                  if (saved) result = saved;
+                                } catch {}
+                                navigate(`/score-report?result=${encodeURIComponent(result)}`);
+                              }}
+                            >
+                              View Result
+                            </Button>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => { e.stopPropagation(); loadPersonForEdit(person); }}
+                          >
+                            <Edit className="h-4 w-4 mr-1" />
+                            Edit
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Table View - Horizontal Scroll */}
+              <div className="md:hidden overflow-x-auto">
+                <div className="min-w-[1000px]">
+                                    <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="min-w-[120px]">Full Name</TableHead>
+                        <TableHead className="min-w-[100px]">Primary Number</TableHead>
+                        <TableHead className="min-w-[100px]">WhatsApp Number</TableHead>
+                        <TableHead className="min-w-[100px]">PAN Number</TableHead>
+                        <TableHead className="min-w-[120px]">Consent Status</TableHead>
+                        <TableHead className="min-w-[200px]">Actions</TableHead>
+                        <TableHead className="min-w-[140px]">Credit Bureau Status</TableHead>
+                        <TableHead className="min-w-[160px]">Report</TableHead>
+                        <TableHead className="min-w-[80px]">Edit</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                  <TableBody>
+                    {persons.map((person) => (
+                      <TableRow key={person.id} className="cursor-pointer" onClick={() => loadPersonForEdit(person)}>
+                        <TableCell className="font-medium">
+                          {`${person.firstName} ${person.middleName ? person.middleName + ' ' : ''}${person.lastName}`}
+                        </TableCell>
+                        <TableCell>{person.primaryNumber}</TableCell>
+                        <TableCell>{person.whatsappNumber || '-'}</TableCell>
+                        <TableCell>{person.panNumber}</TableCell>
+                        <TableCell>{getConsentStatusBadge(person.consentStatus)}</TableCell>
+                         <TableCell>
+                           <div className="flex gap-2">
+                             {person.consentStatus !== 'CONSENT_RECEIVED' && (
+                               <Button
+                                 size="sm"
+                                 variant="outline"
+                                  onClick={(e) => { e.stopPropagation(); handleSendConsent(person.id); }}
+                                  disabled={sendingConsentId === person.id}
+                               >
+                                 <MessageCircle className="h-4 w-4 mr-1" />
+                                  {sendingConsentId === person.id ? 'Sending…' : (person.consentStatus === 'CONSENT_NOT_SENT' ? 'Send Consent' : 'Resend Consent')}
+                               </Button>
+                             )}
+                             <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); handleCheckConsent(person.id); }} disabled={checkingConsentId === person.id}>
+                               {checkingConsentId === person.id ? 'Checking…' : 'Check Status'}
+                             </Button>
+                             
+                             {person.consentStatus === 'CONSENT_RECEIVED' && (
+                               <Button
+                                 size="sm"
+                              onClick={(e) => { e.stopPropagation(); handleTriggerCreditBureau(person.id); }}
+                              disabled={triggeringBureauId === person.id}
+                               >
+                                 <FileText className="h-4 w-4 mr-1" />
+                              {triggeringBureauId === person.id ? 'Triggering…' : (person.creditBureauStatus ? 'Re-Trigger Credit Bureau' : 'Trigger Credit Bureau')}
+                               </Button>
+                             )}
+                           </div>
+                         </TableCell>
+                                                <TableCell>{getCreditBureauStatusBadge(person.creditBureauStatus)}</TableCell>
+                        <TableCell>
+                          {person.creditBureauStatus === 'Processing' && (
+                            <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); fetchCompleteReport(person); }}>Get Report</Button>
+                          )}
+                          {person.creditBureauStatus === 'Success' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                
+                                // Check consent status before navigating to credit report
+                                if (person.consentStatus === 'CONSENT_EXPIRED') {
+                                  try { sessionStorage.setItem('selectedPersonId', person.id); } catch {}
+                                  navigate(`/score-report?consent_status=EXPIRED`);
+                                  return;
+                                }
+                                
+                                if (person.consentStatus === 'CONSENT_WITHDRAWN') {
+                                  try { sessionStorage.setItem('selectedPersonId', person.id); } catch {}
+                                  navigate(`/score-report?consent_status=WITHDRAWN`);
+                                  return;
+                                }
+                                
+                                try { sessionStorage.setItem('selectedPersonId', person.id); } catch {}
+                                const url = `/score-report?enquiry_uuid=${encodeURIComponent(person.enquiryUuid || '')}`;
+                                navigate(url);
+                              }}
+                            >
+                              <BarChart3 className="h-4 w-4 mr-1" />
+                              Credit Report
+                                </Button>
+                          )}
+                          {person.creditBureauStatus === 'Failed' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                try { sessionStorage.setItem('selectedPersonId', person.id); } catch {}
+                                let result = 'NO_HIT';
+                                try {
+                                  const saved = localStorage.getItem(`creditReportResult_${person.id}`);
+                                  if (saved) result = saved;
+                                } catch {}
+                                navigate(`/score-report?result=${encodeURIComponent(result)}`);
+                              }}
+                            >
+                              View Result
+                            </Button>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => { e.stopPropagation(); loadPersonForEdit(person); }}
+                          >
+                            <Edit className="h-4 w-4 mr-1" />
+                            Edit
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                  </Table>
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}
