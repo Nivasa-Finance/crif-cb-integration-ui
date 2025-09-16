@@ -133,6 +133,8 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
   const [checkingConsentId, setCheckingConsentId] = useState<string | null>(null);
   const [sendingConsentId, setSendingConsentId] = useState<string | null>(null);
   const [triggeringBureauId, setTriggeringBureauId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [formData, setFormData] = useState({
     firstName: '',
     middleName: '',
@@ -555,7 +557,11 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
 
       const enquiryUuid = data.enquiry_uuid || data.enquiryUuid || data.uuid;
       setPersons(prev => prev.map(p => p.id === personId ? { ...p, creditBureauStatus: 'Processing', enquiryUuid } : p));
-      try { localStorage.setItem(`creditBureau_${personId}`, JSON.stringify({ status: 'Processing', enquiryUuid })); } catch {}
+      try { 
+        localStorage.setItem(`creditBureau_${personId}`, JSON.stringify({ status: 'Processing', enquiryUuid })); 
+        // Store a timestamp to help with cross-device sync
+        localStorage.setItem(`creditBureauLastUpdated_${personId}`, Date.now().toString());
+      } catch {}
       toast({ title: 'Credit Bureau Triggered', description: 'Report request submitted. Processing in background.' });
     } catch (err: any) {
       toast({ title: 'Error', description: err.message || 'Failed to trigger credit bureau', variant: 'destructive' });
@@ -716,22 +722,75 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
       });
       setPersons(mapped);
 
-      // Background refresh of consent statuses to avoid stale list data
+      // Background refresh of consent statuses and credit bureau statuses to avoid stale list data
       try {
-        await Promise.allSettled(mapped.map(async (p) => {
-          const statusUrl = `/api/v1/consent/status/${encodeURIComponent(p.id)}`;
-          const statusRes = await api.get(statusUrl);
-          const statusData = statusRes.data || {};
-          const apiStatus = String(statusData.consent_status || '').toUpperCase();
-          const hasValid = Boolean(statusData.has_valid_consent);
-          let mappedStatus: Person['consentStatus'] = 'CONSENT_NOT_SENT';
-          if (hasValid || apiStatus.includes('RECEIVED')) mappedStatus = 'CONSENT_RECEIVED';
-          else if (apiStatus.includes('EXPIRE')) mappedStatus = 'CONSENT_EXPIRED';
-          else if (apiStatus.includes('WITHDRAW')) mappedStatus = 'CONSENT_WITHDRAWN';
-          else if (!apiStatus.includes('NO_CONSENT')) mappedStatus = 'CONSENT_PENDING';
-          else mappedStatus = 'CONSENT_NOT_SENT';
-          applyConsentStatusToPerson(p.id, mappedStatus, setPersons);
-        }));
+        const allChecks = mapped.map(async (p) => {
+          // Check consent status
+          try {
+            const statusUrl = `/api/v1/consent/status/${encodeURIComponent(p.id)}`;
+            const statusRes = await api.get(statusUrl);
+            const statusData = statusRes.data || {};
+            const apiStatus = String(statusData.consent_status || '').toUpperCase();
+            const hasValid = Boolean(statusData.has_valid_consent);
+            let mappedStatus: Person['consentStatus'] = 'CONSENT_NOT_SENT';
+            if (hasValid || apiStatus.includes('RECEIVED')) mappedStatus = 'CONSENT_RECEIVED';
+            else if (apiStatus.includes('EXPIRE')) mappedStatus = 'CONSENT_EXPIRED';
+            else if (apiStatus.includes('WITHDRAW')) mappedStatus = 'CONSENT_WITHDRAWN';
+            else if (!apiStatus.includes('NO_CONSENT')) mappedStatus = 'CONSENT_PENDING';
+            else mappedStatus = 'CONSENT_NOT_SENT';
+            applyConsentStatusToPerson(p.id, mappedStatus, setPersons);
+          } catch (error) {
+            console.warn(`Failed to check consent status for person ${p.id}:`, error);
+          }
+
+          // Check credit bureau status if person has enquiry_uuid
+          if (p.enquiryUuid) {
+            try {
+              const url = `${API_CONFIG.BASE_URL}/api/v1/credit-bureau/enquiry/${encodeURIComponent(p.enquiryUuid)}/complete-report`;
+              const res = await apiFetch(url, { headers: buildHeaders('GET', false) });
+              const reportData = await res.json().catch(() => ({}));
+              
+              let creditBureauStatus: Person['creditBureauStatus'] = 'Processing';
+              
+              if (res.ok) {
+                const statusUpper = String(reportData?.status || '').toUpperCase();
+                if (statusUpper === 'NO_HIT' || statusUpper === 'DATA_MISMATCH') {
+                  creditBureauStatus = 'Failed';
+                  try {
+                    localStorage.setItem(`creditReportResult_${p.id}`, statusUpper);
+                  } catch {}
+                } else if (reportData?.response_json || reportData?.["B2C-REPORT"]) {
+                  creditBureauStatus = 'Success';
+                } else {
+                  creditBureauStatus = 'Processing';
+                }
+              } else if (res.status === 404 || res.status === 410) {
+                creditBureauStatus = 'Failed';
+              } else {
+                creditBureauStatus = 'Processing';
+              }
+
+              setPersons(prev => prev.map(person => {
+                if (person.id === p.id) {
+                  const updated = { ...person, creditBureauStatus };
+                  try {
+                    const existing = localStorage.getItem(`creditBureau_${p.id}`);
+                    const parsed = existing ? JSON.parse(existing) : {};
+                    parsed.status = creditBureauStatus;
+                    parsed.enquiryUuid = p.enquiryUuid;
+                    localStorage.setItem(`creditBureau_${p.id}`, JSON.stringify(parsed));
+                  } catch {}
+                  return updated;
+                }
+                return person;
+              }));
+            } catch (error) {
+              console.warn(`Failed to check credit bureau status for person ${p.id}:`, error);
+            }
+          }
+        });
+        
+        await Promise.allSettled(allChecks);
       } catch {}
 
     } catch (err: any) {
@@ -741,9 +800,104 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
     }
   };
 
-  // Force sync credit bureau status for all persons
-  const syncAllCreditBureauStatus = () => {
+  // Force sync credit bureau status for all persons from localStorage and API
+  const syncAllCreditBureauStatus = async () => {
+    setIsRefreshing(true);
+    try {
+    // First, sync from localStorage (fast)
     setPersons(prev => prev.map(person => ({ ...syncCreditBureauStatus({ ...person }) })));
+    
+    // Then, refresh from API to get latest enquiry_uuid (slower but more accurate)
+    try {
+      const data = await getPersons({ leadUuid: lead.id, limit: 50, offset: 0 });
+      const items = Array.isArray((data as any).persons) ? (data as any).persons : [];
+      
+      // Update existing persons with latest enquiry_uuid from API
+      setPersons(prev => prev.map(existingPerson => {
+        const apiPerson = items.find((p: any) => (p.uuid || p.id) === existingPerson.id);
+        if (apiPerson) {
+          const updated = { ...existingPerson };
+          // Update enquiry_uuid if API has a newer one
+          if (apiPerson.latest_enquiry_id && apiPerson.latest_enquiry_id !== existingPerson.enquiryUuid) {
+            updated.enquiryUuid = apiPerson.latest_enquiry_id;
+            // Also update localStorage to keep it in sync
+            try {
+              const existing = localStorage.getItem(`creditBureau_${existingPerson.id}`);
+              const parsed = existing ? JSON.parse(existing) : {};
+              parsed.enquiryUuid = apiPerson.latest_enquiry_id;
+              localStorage.setItem(`creditBureau_${existingPerson.id}`, JSON.stringify(parsed));
+            } catch {}
+          }
+          return updated;
+        }
+        return existingPerson;
+      }));
+
+      // Now check credit bureau status for persons who have enquiry_uuid
+      const personsWithEnquiry = items.filter((p: any) => p.latest_enquiry_id);
+      const statusChecks = personsWithEnquiry.map(async (apiPerson: any) => {
+        try {
+          const enquiryUuid = apiPerson.latest_enquiry_id;
+          const personId = apiPerson.uuid || apiPerson.id;
+          
+          const url = `${API_CONFIG.BASE_URL}/api/v1/credit-bureau/enquiry/${encodeURIComponent(enquiryUuid)}/complete-report`;
+          const res = await apiFetch(url, { headers: buildHeaders('GET', false) });
+          const reportData = await res.json().catch(() => ({}));
+          
+          let creditBureauStatus: Person['creditBureauStatus'] = 'Processing';
+          
+          if (res.ok) {
+            // Check if report is ready
+            const statusUpper = String(reportData?.status || '').toUpperCase();
+            if (statusUpper === 'NO_HIT' || statusUpper === 'DATA_MISMATCH') {
+              creditBureauStatus = 'Failed';
+              // Store the specific result for later use
+              try {
+                localStorage.setItem(`creditReportResult_${personId}`, statusUpper);
+              } catch {}
+            } else if (reportData?.response_json || reportData?.["B2C-REPORT"]) {
+              creditBureauStatus = 'Success';
+            } else {
+              creditBureauStatus = 'Processing';
+            }
+          } else if (res.status === 404 || res.status === 410) {
+            // Enquiry not found or expired
+            creditBureauStatus = 'Failed';
+          } else {
+            // Still processing or other error
+            creditBureauStatus = 'Processing';
+          }
+
+          // Update person status
+          setPersons(prev => prev.map(p => {
+            if (p.id === personId) {
+              const updated = { ...p, creditBureauStatus };
+              // Update localStorage as well
+              try {
+                const existing = localStorage.getItem(`creditBureau_${personId}`);
+                const parsed = existing ? JSON.parse(existing) : {};
+                parsed.status = creditBureauStatus;
+                parsed.enquiryUuid = enquiryUuid;
+                localStorage.setItem(`creditBureau_${personId}`, JSON.stringify(parsed));
+              } catch {}
+              return updated;
+            }
+            return p;
+          }));
+        } catch (error) {
+          console.warn(`Failed to check credit bureau status for person ${apiPerson.uuid || apiPerson.id}:`, error);
+        }
+      });
+
+      // Wait for all status checks to complete
+      await Promise.allSettled(statusChecks);
+    } catch (error) {
+      console.warn('Failed to sync persons from API:', error);
+    }
+    } finally {
+      setIsRefreshing(false);
+      setLastRefresh(new Date());
+    }
   };
 
   useEffect(() => {
@@ -754,14 +908,45 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead.id]);
 
-  // Periodic sync to ensure desktop and mobile stay in sync
+  // Periodic sync to ensure desktop and mobile stay in sync (only when page is visible)
   useEffect(() => {
-    const interval = setInterval(() => {
-      syncAllCreditBureauStatus();
-    }, 3000); // Sync every 3 seconds
+    let interval: NodeJS.Timeout | null = null;
 
-    return () => clearInterval(interval);
-  }, []);
+    const startPolling = () => {
+      if (interval) clearInterval(interval);
+      interval = setInterval(async () => {
+        // Only sync if page is visible to avoid unnecessary API calls
+        if (document.visibilityState === 'visible') {
+          await syncAllCreditBureauStatus();
+        }
+      }, 30000); // Sync every 30 seconds (reduced frequency from 5s to reduce server load)
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // When page becomes visible, do an immediate sync and restart polling
+        syncAllCreditBureauStatus();
+        startPolling();
+      } else {
+        // When page becomes hidden, stop polling to save resources
+        if (interval) {
+          clearInterval(interval);
+          interval = null;
+        }
+      }
+    };
+
+    // Start polling immediately
+    startPolling();
+    
+    // Listen for page visibility changes
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      if (interval) clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [lead.id]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -1009,14 +1194,22 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
             <CardHeader>
               <CardTitle className="flex justify-between items-center">
                 <span>Added Persons ({persons.length})</span>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={syncAllCreditBureauStatus}
-                  title="Refresh credit bureau status"
-                >
-                  🔄 Sync Status
-                </Button>
+                <div className="flex items-center gap-2">
+                  {lastRefresh && (
+                    <span className="text-xs text-muted-foreground">
+                      Last updated: {lastRefresh.toLocaleTimeString()}
+                    </span>
+                  )}
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => syncAllCreditBureauStatus()}
+                    disabled={isRefreshing}
+                    title="Refresh credit bureau status from API"
+                  >
+                    {isRefreshing ? '🔄 Refreshing...' : '🔄 Refresh Status'}
+                  </Button>
+                </div>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -1070,7 +1263,7 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
                               disabled={triggeringBureauId === person.id}
                                >
                                  <FileText className="h-4 w-4 mr-1" />
-                              {triggeringBureauId === person.id ? 'Triggering…' : (person.creditBureauStatus ? 'Re-Trigger Credit Bureau' : 'Trigger Credit Bureau')}
+                              {triggeringBureauId === person.id ? 'Triggering…' : (person.enquiryUuid ? 'Re-Trigger Credit Bureau' : 'Trigger Credit Bureau')}
                                </Button>
                              )}
                            </div>
@@ -1195,7 +1388,7 @@ const PersonManagement = ({ lead, onBack }: PersonManagementProps) => {
                               disabled={triggeringBureauId === person.id}
                                >
                                  <FileText className="h-4 w-4 mr-1" />
-                              {triggeringBureauId === person.id ? 'Triggering…' : (person.creditBureauStatus ? 'Re-Trigger Credit Bureau' : 'Trigger Credit Bureau')}
+                              {triggeringBureauId === person.id ? 'Triggering…' : (person.enquiryUuid ? 'Re-Trigger Credit Bureau' : 'Trigger Credit Bureau')}
                                </Button>
                              )}
                            </div>
